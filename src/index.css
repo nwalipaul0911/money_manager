@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --color-surface: #0f1419;
+  --color-surface-raised: #1a2332;
+  --color-surface-overlay: #243044;
+  --color-border: #2d3a4f;
+  --color-text: #e8edf4;
+  --color-text-muted: #8b9cb3;
+  --color-needs: #3b82f6;
+  --color-wants: #a855f7;
+  --color-income: #10b981;
+  --color-wishlist: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-text font-sans antialiased min-h-screen;
+  }
+
+  input, select, textarea {
+    @apply bg-surface-overlay border border-border rounded-lg px-3 py-2 text-text
+           focus:outline-none focus:ring-2 focus:ring-income/50 focus:border-income/50
+           placeholder:text-text-muted;
+  }
+
+  button {
+    @apply cursor-pointer;
+  }
+}
