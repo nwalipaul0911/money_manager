@@ -1,53 +1,120 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { AuthScreen } from './components/AuthScreen'
 import { Dashboard } from './components/Dashboard'
 import { ExpenseLogger } from './components/ExpenseLogger'
 import { Layout } from './components/Layout'
 import { Onboarding } from './components/Onboarding'
 import { Settings } from './components/Settings'
+import { SponsorReview } from './components/SponsorReview'
 import { Wishlist } from './components/Wishlist'
-import { useAppState } from './hooks/useAppState'
+import { useAuth } from './context/AuthContext'
+import { useAppData } from './hooks/useAppData'
 import type { Tab } from './types'
 
 function App() {
-  const {
-    state,
-    update,
-    completeOnboarding,
-    addTransaction,
-    deleteTransaction,
-    addWishlistItem,
-    allocateToWishlist,
-    removeWishlistItem,
-    resetApp,
-  } = useAppState()
-
+  const { user, loading, login, register, logout, refreshUser } = useAuth()
+  const [viewUserId, setViewUserId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
 
-  if (!state.onboardingComplete) {
-    return <Onboarding onComplete={completeOnboarding} />
+  const effectiveViewId = viewUserId ?? user?.userId ?? null
+  const app = useAppData(effectiveViewId)
+
+  useEffect(() => {
+    if (user?.userId) setViewUserId(user.userId)
+  }, [user?.userId])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-text-muted">Loading…</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <AuthScreen onLogin={login} onRegister={register} />
+  }
+
+  if (!user.profile.onboardingComplete) {
+    return (
+      <Onboarding
+        defaultName={user.profile.name}
+        onComplete={async (data) => {
+          await app.completeOnboarding(data)
+          await refreshUser()
+        }}
+      />
+    )
+  }
+
+  if (app.loading || !app.profileData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-text-muted">{app.error ?? 'Loading your data…'}</p>
+      </div>
+    )
+  }
+
+  const isOwnView = app.profileData.isOwnProfile
+  const viewName = app.profileData.profile.name
+
+  const handleSwitchView = (userId: string) => {
+    const isOwn = userId === user.userId
+    const isDependant = user.dependants.some((d) => d.userId === userId)
+    if (!isOwn && !isDependant) return
+    setViewUserId(userId)
+    setActiveTab('dashboard')
   }
 
   return (
-    <Layout activeTab={activeTab} onTabChange={setActiveTab}>
-      {activeTab === 'dashboard' && <Dashboard state={state} />}
-      {activeTab === 'log' && (
+    <Layout
+      user={user}
+      viewUserId={effectiveViewId!}
+      viewUserName={viewName}
+      isOwnView={isOwnView}
+      activeTab={activeTab}
+      pendingReviewCount={user.pendingReviewCount}
+      onTabChange={setActiveTab}
+      onSwitchView={handleSwitchView}
+      onLogout={logout}
+    >
+      {activeTab === 'dashboard' && (
+        <Dashboard data={app.profileData} readOnly={!isOwnView} />
+      )}
+      {activeTab === 'log' && isOwnView && (
         <ExpenseLogger
-          state={state}
-          onAdd={addTransaction}
-          onDelete={deleteTransaction}
+          data={app.profileData}
+          onAdd={(amount, date, category, pillar, note) =>
+            app.addTransaction({ amount, date, category, pillar, note })
+          }
+          onDelete={app.deleteTransaction}
         />
       )}
-      {activeTab === 'wishlist' && (
+      {activeTab === 'wishlist' && isOwnView && (
         <Wishlist
-          state={state}
-          onAdd={addWishlistItem}
-          onAllocate={allocateToWishlist}
-          onRemove={removeWishlistItem}
-          onToggleAutoAllocate={(enabled) => update({ autoAllocateWants: enabled })}
+          data={app.profileData}
+          onAdd={app.addWishlistItem}
+          onAllocate={app.allocateToWishlist}
+          onRemove={app.removeWishlistItem}
+          onToggleAutoAllocate={(enabled) => app.updateProfile({ auto_allocate_wants: enabled })}
         />
       )}
-      {activeTab === 'settings' && (
-        <Settings state={state} onUpdate={update} onReset={resetApp} />
+      {activeTab === 'review' && isOwnView && user.isSponsor && app.pendingReview && (
+        <SponsorReview
+          pending={app.pendingReview}
+          onApproveTransaction={(id) => app.reviewTransaction(id, true)}
+          onRejectTransaction={(id) => app.reviewTransaction(id, false)}
+          onApproveWishlist={(id) => app.reviewWishlistItem(id, true)}
+          onRejectWishlist={(id) => app.reviewWishlistItem(id, false)}
+        />
+      )}
+      {activeTab === 'settings' && isOwnView && (
+        <Settings
+          user={user}
+          onUpdateProfile={app.updateProfile}
+          onSendInvitation={app.sendInvitation}
+          onAcceptInvitation={app.acceptInvitation}
+        />
       )}
     </Layout>
   )
